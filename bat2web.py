@@ -7,11 +7,50 @@ import os
 import threading
 import queue
 import uuid
+import logging
 
 app = flask.Flask(__name__)
 app.secret_key = os.urandom(16)
 input_queue = queue.Queue()
 session_threads = {}
+LOG = logging.getLogger(__name__)
+
+
+class CookieRedirect:
+    """
+    TODO: redirect saving and loading files into a cookie
+    """
+
+    class CookieReader:
+        def __init__(self, name):
+            self.obj = name  # flask.request.get_cookie(name)
+
+        def __enter__(self):
+            return self.obj
+
+        def __exit__(self, type, value, traceback):
+            pass
+
+    def __init__(self):
+        self.files = {}
+
+    def create(self, name, text):
+        self.files[name] = [text]
+
+    def append(self, name, text):
+        self.files[name].append(text)
+
+    def move(self, orig, dest):
+        pass
+
+    def remove(self, item):
+        del self.files[item]
+
+    def read(self, name):
+        return CookieRedirect.CookieReader(self.files[name])
+
+    def exists(self, name):
+        return name in self.files
 
 
 class Webpage:
@@ -29,10 +68,14 @@ class Webpage:
     def request_input(self):
         if self.page_content_as_html == "":
             self.page_content_as_html = "".join(self.page_content)
-        uuid, line = input_queue.get()
-        while uuid != self.uuid:
-            input_queue.put((uuid, line))
-            uuid, line = input_queue.get()
+        try:
+            uuid, line = input_queue.get(timeout=600)
+            while uuid != self.uuid:
+                input_queue.put((uuid, line))
+                uuid, line = input_queue.get(timeout=600)
+        except Empty:
+            # kill batchfile after 10 minutes of inactivity
+            raise batchfile.QuitProgram
         return line
 
 
@@ -42,11 +85,13 @@ def start_session_thread(bat: batchfile.Batchfile):
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    if flask.request.method == "GET" and "uuid" not in flask.session:
+    if "uuid" not in flask.session:
         # A brand new session
         session_id = uuid.uuid4()
         webpage = Webpage(session_id)
-        bat = batchfile.Batchfile(stdin=webpage.request_input, stdout=webpage)
+        bat = batchfile.Batchfile(
+            stdin=webpage.request_input, stdout=webpage, redirection=CookieRedirect()
+        )
         global session_threads
         session_threads[session_id] = bat
         flask.session["uuid"] = session_id
@@ -57,7 +102,8 @@ def index():
             args=(bat,),
         )
         session_thread.start()
-    elif flask.request.method == "POST":
+        LOG.warning("Threads now in existence: %s", str(threading.active_count()))
+    elif flask.request.method == "POST" and "uuid" in flask.session:
         user_input = flask.request.form["user_input"]
         if user_input == "":
             user_input = " "
@@ -66,10 +112,13 @@ def index():
 
     while session_threads[flask.session["uuid"]].stdout.page_content_as_html == "":
         continue
-    return flask.render_template(
-        "webpage.html",
-        content=session_threads[flask.session["uuid"]].stdout.page_content_as_html,
+    flask_response = flask.make_response(
+        flask.render_template(
+            "webpage.html",
+            content=session_threads[flask.session["uuid"]].stdout.page_content_as_html,
+        )
     )
+    return flask_response
 
 
 if __name__ == "__main__":
