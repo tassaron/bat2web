@@ -1,10 +1,22 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
 
 <head>
+    <meta charset="utf-8">
+    <meta name="description" content="FUNTIMES batch file game">
+    <meta name="author" content="tassaron">
     <title>FUNTIMES</title>
+    <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
+    <style>
+        body {
+            background: darkmagenta;
+            color: white;
+        }
+    </style>
 </head>
 
 <body>
+    <img href="{{url_for('static', filename='img/cmdexe.png')}}" width=669 height=32>
     <p>
     <pre>{{ content }}</pre>
     </p>
