@@ -76,6 +76,8 @@ class Webpage:
         except Empty:
             # kill batchfile after 10 minutes of inactivity
             raise batchfile.QuitProgram
+        if line.lower() == "quit":
+            raise batchfile.QuitProgram
         return line
 
 
@@ -105,10 +107,13 @@ def index():
         LOG.warning("Threads now in existence: %s", str(threading.active_count()))
     elif flask.request.method == "POST" and "uuid" in flask.session:
         user_input = flask.request.form["user_input"]
+        session_threads[flask.session["uuid"]].stdout.clear()
         if user_input == "":
             user_input = " "
-        session_threads[flask.session["uuid"]].stdout.clear()
         input_queue.put((flask.session["uuid"], user_input))
+        if user_input.lower() == "quit":
+            flask.session.pop("uuid")
+            return flask.redirect("/")
 
     while session_threads[flask.session["uuid"]].stdout.page_content_as_html == "":
         continue
@@ -119,6 +124,14 @@ def index():
         )
     )
     return flask_response
+
+
+@app.route("/quit", methods=["POST"])
+def user_requested_quit():
+    if flask.request.method == "POST" and "uuid" in flask.session:
+        uuid = flask.session.pop("uuid")
+        input_queue.put((uuid, "quit"))
+    return flask.redirect("/")
 
 
 if __name__ == "__main__":
