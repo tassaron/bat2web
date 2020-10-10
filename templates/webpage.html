@@ -3,20 +3,21 @@
 
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <meta name="description" content="FUNTIMES batch file game">
     <meta name="author" content="tassaron">
     <title>FUNTIMES</title>
     <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <style>
         body {
-            background: darkmagenta;
+            background: rgb(36, 1, 36);
             color: white;
         }
     </style>
 </head>
 
 <body>
-    <img href="{{url_for('static', filename='img/cmdexe.png')}}" width=669 height=32>
+    <img src="{{url_for('static', filename='img/cmdexe.png')}}">
     <p>
     <pre>{{ content }}</pre>
     </p>
