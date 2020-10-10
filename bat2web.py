@@ -110,6 +110,9 @@ def index():
         session_threads[flask.session["uuid"]].stdout.clear()
         if user_input == "":
             user_input = " "
+        elif user_input in ("A", "B", "C", "D", "Stats", "Stop"):
+            # inelegant quick fix for case sensitivity, #FIXME
+            user_input = user_input.lower()
         input_queue.put((flask.session["uuid"], user_input))
         if user_input.lower() == "quit":
             flask.session.pop("uuid")
