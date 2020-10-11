@@ -82,7 +82,7 @@ class Webpage:
 
 
 def start_session_thread(bat: batchfile.Batchfile):
-    bat.run("/home/b/bat2web/funtimes", "funtimes.bat")
+    bat.run("game", "funtimes.bat")
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -120,10 +120,12 @@ def index():
 
     while session_threads[flask.session["uuid"]].stdout.page_content_as_html == "":
         continue
+    current_bat = session_threads[flask.session["uuid"]].current_bat
     flask_response = flask.make_response(
         flask.render_template(
             "webpage.html",
             content=session_threads[flask.session["uuid"]].stdout.page_content_as_html,
+            current_bat=current_bat,
         )
     )
     return flask_response
