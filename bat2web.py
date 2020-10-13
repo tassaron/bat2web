@@ -73,7 +73,7 @@ class Webpage:
             while uuid != self.uuid:
                 input_queue.put((uuid, line))
                 uuid, line = input_queue.get(timeout=600)
-        except Empty:
+        except queue.Empty:
             # kill batchfile after 10 minutes of inactivity
             raise batchfile.QuitProgram
         if line.lower() == "quit":
