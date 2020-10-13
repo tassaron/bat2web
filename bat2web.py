@@ -14,6 +14,8 @@ app.secret_key = os.urandom(16)
 input_queue = queue.Queue()
 session_threads = {}
 LOG = logging.getLogger(__name__)
+BAT_DIR = "/srv/funtimes/game"
+BAT_FILE = "funtimes.bat"
 
 
 class CookieRedirect:
@@ -82,7 +84,7 @@ class Webpage:
 
 
 def start_session_thread(bat: batchfile.Batchfile):
-    bat.run("game", "funtimes.bat")
+    bat.run(BAT_DIR, BAT_FILE)
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -140,4 +142,16 @@ def user_requested_quit():
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="turn a batch file into a website (flask development server)"
+    )
+    parser.add_argument("-d", "--dir")
+    parser.add_argument("bat_file", nargs="?")
+    args = parser.parse_args()
+    if args.dir:
+        BAT_DIR = args.dir
+    if args.bat_file:
+        BAT_FILE = args.bat_file
     app.run()
