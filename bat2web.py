@@ -84,7 +84,7 @@ class Webpage:
 
 
 def start_session_thread(bat: batchfile.Batchfile):
-    bat.run(BAT_DIR, BAT_FILE)
+    bat.run([f"cd {BAT_DIR}", f"call {BAT_FILE}"])
 
 
 @app.route("/", methods=["GET", "POST"])
