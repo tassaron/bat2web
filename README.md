@@ -6,7 +6,7 @@ See an example: [Play FUNTIMES](http://bat.tassaron.com), a batch file game I ma
 # Requirements
 * Python 3.6+
 * Flask
-* [Batchfile.py](https://github.com/tassaron2/batchfile.py)
+* [Batchfile.py](https://github.com/tassaron/batchfile.py)
 
 # Backstory
-When I was 16 I used to write text adventure games using batch files. See the [Batchfile.py](https://github.com/tassaron2/batchfile.py) readme for more information. I wrote Batchfile.py so I could play my old batch file games without Windows, and turning that into a website seemed like a fun extension of the idea.
+When I was 16 I used to write text adventure games using batch files. See the [Batchfile.py](https://github.com/tassaron/batchfile.py) readme for more information. I wrote Batchfile.py so I could play my old batch file games without Windows, and turning that into a website seemed like a fun extension of the idea.

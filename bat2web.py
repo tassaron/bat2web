@@ -87,7 +87,31 @@ def start_session_thread(bat: batchfile.Batchfile):
     bat.run([f"cd {BAT_DIR}", f"call {BAT_FILE}"])
 
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/input", methods=["POST"])
+def send_input():
+    if "uuid" not in flask.session:
+        return {"bat": None, "html": ""}
+    user_input = flask.request.get_json()
+    session_threads[flask.session["uuid"]].stdout.clear()
+    if user_input == "":
+        user_input = " "
+    elif user_input in ("A", "B", "C", "D", "Stats", "Stop"):
+        # inelegant quick fix for case sensitivity, #FIXME
+        user_input = user_input.lower()
+    input_queue.put((flask.session["uuid"], user_input))
+    while session_threads[flask.session["uuid"]].stdout.page_content_as_html == "":
+        continue
+    response = flask.make_response(
+        {
+            "html": session_threads[flask.session["uuid"]].stdout.page_content_as_html,
+            "bat": session_threads[flask.session["uuid"]].current_bat,
+        },
+        200,
+    )
+    return response
+
+
+@app.route("/")
 def index():
     if "uuid" not in flask.session:
         # A brand new session
@@ -107,35 +131,23 @@ def index():
         )
         session_thread.start()
         LOG.warning("Threads now in existence: %s", str(threading.active_count()))
-    elif flask.request.method == "POST" and "uuid" in flask.session:
-        user_input = flask.request.form["user_input"]
-        session_threads[flask.session["uuid"]].stdout.clear()
-        if user_input == "":
-            user_input = " "
-        elif user_input in ("A", "B", "C", "D", "Stats", "Stop"):
-            # inelegant quick fix for case sensitivity, #FIXME
-            user_input = user_input.lower()
-        input_queue.put((flask.session["uuid"], user_input))
-        if user_input.lower() == "quit":
-            flask.session.pop("uuid")
-            return flask.redirect("/")
 
     while session_threads[flask.session["uuid"]].stdout.page_content_as_html == "":
         continue
-    current_bat = session_threads[flask.session["uuid"]].current_bat
     flask_response = flask.make_response(
         flask.render_template(
             "webpage.html",
             content=session_threads[flask.session["uuid"]].stdout.page_content_as_html,
-            current_bat=current_bat,
-        )
+            current_bat=session_threads[flask.session["uuid"]].current_bat,
+        ),
+        200,
     )
     return flask_response
 
 
-@app.route("/quit", methods=["POST"])
+@app.route("/quit")
 def user_requested_quit():
-    if flask.request.method == "POST" and "uuid" in flask.session:
+    if "uuid" in flask.session:
         uuid = flask.session.pop("uuid")
         input_queue.put((uuid, "quit"))
     return flask.redirect("/")
