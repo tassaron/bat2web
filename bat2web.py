@@ -16,6 +16,11 @@ session_threads = {}
 LOG = logging.getLogger(__name__)
 BAT_DIR = "/srv/funtimes/game"
 BAT_FILE = "funtimes.bat"
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+)
 
 
 class CookieRedirect:
