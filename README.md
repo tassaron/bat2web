@@ -1,7 +1,7 @@
 # bat2web
 Ever wanted to turn a Windows batch file into a webapp running on a Linux server? Now you can.
 
-See an example: [Play FUNTIMES](http://bat.tassaron.com), a batch file game I made when I was 16
+This is an alpha/prototype that must be run in a dedicated VM with limited resources :)
 
 # Requirements
 * Python 3.6+
