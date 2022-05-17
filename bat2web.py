@@ -8,19 +8,44 @@ import threading
 import queue
 import uuid
 import logging
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
-app = flask.Flask(__name__)
-app.secret_key = os.urandom(16)
+
+def create_app():
+    app = flask.Flask(__name__)
+
+    # Create random secret key at first launch
+    # Load from key.sav every subsequent launch
+    try:
+        with open("key.sav", "rb") as f:
+            key = f.read(16)
+    except FileNotFoundError:
+        key = os.urandom(16)
+        with open("key.sav", "wb") as f:
+            f.write(key)
+
+    app.secret_key = key
+    app.config.update(
+        SESSION_COOKIE_SECURE=True,
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+    )
+    return app
+
+
+app = create_app()
+
+LOG = logging.getLogger(__name__)
+BAT_DIR = os.getenv("BAT_DIR", "/srv/funtimes/game")
+BAT_FILE = "funtimes.bat"
+
+# Queues and threads for batchfile interpreters
 input_queue = queue.Queue()
 session_threads = {}
-LOG = logging.getLogger(__name__)
-BAT_DIR = "/srv/funtimes/game"
-BAT_FILE = "funtimes.bat"
-app.config.update(
-    SESSION_COOKIE_SECURE=True,
-    SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE="Lax",
-)
 
 
 class CookieRedirect:
@@ -159,16 +184,4 @@ def user_requested_quit():
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="turn a batch file into a website (flask development server)"
-    )
-    parser.add_argument("-d", "--dir")
-    parser.add_argument("bat_file", nargs="?")
-    args = parser.parse_args()
-    if args.dir:
-        BAT_DIR = args.dir
-    if args.bat_file:
-        BAT_FILE = args.bat_file
     app.run()
