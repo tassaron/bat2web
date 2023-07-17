@@ -4,8 +4,6 @@ Turns a .bat file into a website for some reason
 import batchfile
 import flask
 import os
-import threading
-import queue
 import uuid
 import logging
 try:
@@ -30,7 +28,7 @@ def create_app():
 
     app.secret_key = key
     app.config.update(
-        SESSION_COOKIE_SECURE=True,
+        #SESSION_COOKIE_SECURE=True,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
     )
@@ -40,12 +38,8 @@ def create_app():
 app = create_app()
 
 LOG = logging.getLogger(__name__)
-BAT_DIR = os.getenv("BAT_DIR", "/srv/funtimes/game")
+BAT_DIR = os.getenv("BAT_DIR", "/home/b/code/batchfile.py/games/funtimes")
 BAT_FILE = "funtimes.bat"
-
-# Queues and threads for batchfile interpreters
-input_queue = queue.Queue()
-session_threads = {}
 
 
 class CookieRedirect:
@@ -86,10 +80,11 @@ class CookieRedirect:
 
 
 class Webpage:
-    def __init__(self, uuid: uuid.UUID):
+    def __init__(self, uuid: uuid.UUID, user_input=""):
         self.uuid = uuid
         self.page_content = []
         self.page_content_as_html = ""
+        self.user_input = user_input
 
     def append(self, line):
         self.page_content.append(line)
@@ -98,43 +93,66 @@ class Webpage:
         self.__init__(self.uuid)
 
     def request_input(self):
+        # triggers when input is needed from user
+        # so we pause until this input is received from the webpage
         if self.page_content_as_html == "":
             self.page_content_as_html = "".join(self.page_content)
-        try:
-            uuid, line = input_queue.get(timeout=600)
-            while uuid != self.uuid:
-                input_queue.put((uuid, line))
-                uuid, line = input_queue.get(timeout=600)
-        except queue.Empty:
-            # kill batchfile after 10 minutes of inactivity
-            raise batchfile.QuitProgram
-        if line.lower() == "quit":
-            raise batchfile.QuitProgram
-        return line
+        #raise batchfile.PauseProgram
+        #return None
+        return self.user_input
 
 
-def start_session_thread(bat: batchfile.Batchfile):
-    bat.run([f"cd {BAT_DIR}", f"call {BAT_FILE}"])
+def start_new_session():
+    session_id = uuid.uuid4()
+    webpage = Webpage(session_id)
+    flask.session["uuid"] = session_id
+    bat = batchfile.Batchfile(
+        stdin=webpage.request_input, stdout=webpage, redirection=CookieRedirect()
+    )
+    try:
+        bat.run([f"cd {BAT_DIR}", f"call {BAT_FILE}"])
+    except batchfile.PauseProgram:
+        flask.session["variables"] = bat.VARIABLES
+        flask.session["callstack"] = bat.CALLSTACK
+        return bat
+
+
+def continue_session(next_input=""):
+    webpage = Webpage(flask.session["uuid"], user_input=next_input)
+        
+    bat = batchfile.Batchfile(
+        stdin=webpage.request_input, stdout=webpage, redirection=CookieRedirect()
+    )
+    try:
+        bat.resume_from_serialized_state(flask.session["callstack"], flask.session["variables"])
+    except batchfile.PauseProgram:
+        flask.session["variables"] = bat.VARIABLES
+        flask.session["callstack"] = bat.CALLSTACK
+        return bat
+    except (FileNotFoundError, IndexError):
+        del flask.session["uuid"]
 
 
 @app.route("/input", methods=["POST"])
 def send_input():
     if "uuid" not in flask.session:
         return {"bat": None, "html": ""}
+    
     user_input = flask.request.get_json()
-    session_threads[flask.session["uuid"]].stdout.clear()
     if user_input == "":
         user_input = " "
     elif user_input in ("A", "B", "C", "D", "Stats", "Stop"):
         # inelegant quick fix for case sensitivity, #FIXME
         user_input = user_input.lower()
-    input_queue.put((flask.session["uuid"], user_input))
-    while session_threads[flask.session["uuid"]].stdout.page_content_as_html == "":
-        continue
+
+    bat = continue_session(user_input)
+    if bat is None:
+        flask.abort(500)
+    
     response = flask.make_response(
         {
-            "html": session_threads[flask.session["uuid"]].stdout.page_content_as_html,
-            "bat": session_threads[flask.session["uuid"]].current_bat,
+            "html": bat.stdout.page_content_as_html,
+            "bat": bat.CALLSTACK[-1][0],
         },
         200,
     )
@@ -145,30 +163,21 @@ def send_input():
 def index():
     if "uuid" not in flask.session:
         # A brand new session
-        session_id = uuid.uuid4()
-        webpage = Webpage(session_id)
-        bat = batchfile.Batchfile(
-            stdin=webpage.request_input, stdout=webpage, redirection=CookieRedirect()
-        )
-        global session_threads
-        session_threads[session_id] = bat
-        flask.session["uuid"] = session_id
-        session_thread = threading.Thread(
-            group=None,
-            target=start_session_thread,
-            name="Batchfile Execution Thread",
-            args=(bat,),
-        )
-        session_thread.start()
-        LOG.warning("Threads now in existence: %s", str(threading.active_count()))
+        bat = start_new_session()
+    else:
+        # Resume a session
+        bat = continue_session()
+        if bat is None:
+            bat = start_new_session()
 
-    while session_threads[flask.session["uuid"]].stdout.page_content_as_html == "":
-        continue
+    if bat is None:
+        flask.abort(400)
+
     flask_response = flask.make_response(
         flask.render_template(
             "webpage.html",
-            content=session_threads[flask.session["uuid"]].stdout.page_content_as_html,
-            current_bat=session_threads[flask.session["uuid"]].current_bat,
+            content=bat.stdout.page_content_as_html,
+            current_bat=bat.CALLSTACK[-1][0],
         ),
         200,
     )
@@ -179,9 +188,8 @@ def index():
 def user_requested_quit():
     if "uuid" in flask.session:
         uuid = flask.session.pop("uuid")
-        input_queue.put((uuid, "quit"))
     return flask.redirect("/")
 
 
 if __name__ == "__main__":
-    app.run()
+    app.run(debug=True)
