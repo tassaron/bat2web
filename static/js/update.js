@@ -11,7 +11,7 @@ window.onload = function () {
 };
 
 function quit() {
-    window.location.replace(`${window.location.origin}/quit`)
+    window.location.replace(`${window.location}quit`);
 }
 
 function update() {
@@ -19,7 +19,7 @@ function update() {
     var content = document.getElementById('content');
     var input = document.getElementById('user_input');
     fetch(
-        `${window.location.origin}/input`,
+        `${window.location}input`,
         {
             method: "POST",
             credentials: "same-origin",

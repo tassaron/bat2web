@@ -16,6 +16,10 @@ except ImportError:
 
 
 class MyFlask(flask.Flask):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.config["SESSION_COOKIE_NAME"] = "batchfile-session"
+
     def add_url_rule(self, rule, *args, **kwargs):
         return super().add_url_rule(os.getenv("ROOT_DIR", "") + rule, *args, **kwargs)
 
@@ -220,7 +224,7 @@ def index():
 def user_requested_quit():
     if "uuid" in flask.session:
         uuid = flask.session.pop("uuid")
-    return flask.redirect("/")
+    return flask.redirect(flask.url_for(".index"))
 
 
 if __name__ == "__main__":
