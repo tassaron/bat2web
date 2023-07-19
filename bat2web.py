@@ -30,7 +30,7 @@ def create_app():
 
     app.secret_key = key
     app.config.update(
-        # SESSION_COOKIE_SECURE=True,
+        SESSION_COOKIE_SECURE=True,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
     )
@@ -40,7 +40,7 @@ def create_app():
 app = create_app()
 
 LOG = logging.getLogger(__name__)
-BAT_DIR = os.getenv("BAT_DIR", "/home/b/code/batchfile.py/games/funtimes")
+BAT_DIR = os.getenv("BAT_DIR", "/srv/funtimes/game")
 BAT_FILE = "funtimes.bat"
 
 
@@ -86,7 +86,7 @@ class Webpage:
         self.uuid = uuid
         self.page_content = []
         self.page_content_as_html = ""
-        self.user_input = user_input
+        self.user_input = [user_input]
 
     def append(self, line):
         self.page_content.append(line)
@@ -99,17 +99,25 @@ class Webpage:
         # so we pause until this input is received from the webpage
         if self.page_content_as_html == "":
             self.page_content_as_html = "".join(self.page_content)
-        return self.user_input
+        try:
+            return self.user_input.pop()
+        except IndexError:
+            # prevent infinite loops in some batch files (empty %choice%)
+            raise batchfile.PauseProgram
 
 
 def start_new_session():
     session_id = uuid.uuid4()
     webpage = Webpage(session_id)
     flask.session["uuid"] = session_id
-    flask.session["files"] = {}
+    flask.session["callstack"] = []
+    flask.session["variables"] = {}
     bat = batchfile.Batchfile(
-        stdin=webpage.request_input, stdout=webpage, redirection=WebFileRedirect()
+        stdin=webpage.request_input,
+        stdout=webpage,
+        redirection=WebFileRedirect(flask.session["files"]),
     )
+    bat.chdir(BAT_DIR)
     try:
         bat.run([f"cd {BAT_DIR}", f"call {BAT_FILE}"])
     except batchfile.PauseProgram:
@@ -122,11 +130,14 @@ def start_new_session():
 def continue_session(next_input=""):
     webpage = Webpage(flask.session["uuid"], user_input=next_input)
 
+    app.logger.debug("Callstack: %s", flask.session["callstack"])
+
     bat = batchfile.Batchfile(
         stdin=webpage.request_input,
         stdout=webpage,
         redirection=WebFileRedirect(flask.session["files"]),
     )
+    bat.chdir(BAT_DIR)
     try:
         bat.resume_from_serialized_state(
             flask.session["callstack"], flask.session["variables"]
@@ -136,16 +147,22 @@ def continue_session(next_input=""):
         flask.session["callstack"] = bat.CALLSTACK
         flask.session["files"] = bat.redirection_target.files
         return bat
-    except (FileNotFoundError, IndexError, batchfile.QuitProgram):
+    except (FileNotFoundError, IndexError) as e:
+        import traceback
+
+        app.logger.error("Session crashed! %s", traceback.format_exc())
         del flask.session["uuid"]
+    except batchfile.QuitProgram:
+        app.logger.error("Program exited")
 
 
 @app.route("/input", methods=["POST"])
 def send_input():
     if "uuid" not in flask.session:
-        return {"bat": None, "html": ""}
+        flask.abort(400)
 
     user_input = flask.request.get_json()
+    LOG.debug("Received user input: %s", user_input)
     if user_input == "":
         user_input = " "
     elif user_input in ("A", "B", "C", "D", "Stats", "Stop"):
@@ -168,7 +185,10 @@ def send_input():
 
 @app.route("/")
 def index():
-    if ("uuid", "files") not in flask.session:
+    if "files" not in flask.session:
+        flask.session["files"] = {}
+
+    if "uuid" not in flask.session:
         # A brand new session
         bat = start_new_session()
     else:
