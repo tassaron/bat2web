@@ -6,8 +6,10 @@ import flask
 import os
 import uuid
 import logging
+
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -28,7 +30,7 @@ def create_app():
 
     app.secret_key = key
     app.config.update(
-        #SESSION_COOKIE_SECURE=True,
+        # SESSION_COOKIE_SECURE=True,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
     )
@@ -42,23 +44,23 @@ BAT_DIR = os.getenv("BAT_DIR", "/home/b/code/batchfile.py/games/funtimes")
 BAT_FILE = "funtimes.bat"
 
 
-class CookieRedirect:
+class WebFileRedirect:
     """
-    TODO: redirect saving and loading files into a cookie
+    Target of redirected output that would've originally written a text file
     """
 
-    class CookieReader:
-        def __init__(self, name):
-            self.obj = name  # flask.request.get_cookie(name)
+    class FileReader:
+        def __init__(self, text):
+            self.obj = text
 
         def __enter__(self):
             return self.obj
 
-        def __exit__(self, type, value, traceback):
+        def __exit__(self, type_, value, traceback):
             pass
 
-    def __init__(self):
-        self.files = {}
+    def __init__(self, initial_files=None):
+        self.files = initial_files if initial_files is not None else {}
 
     def create(self, name, text):
         self.files[name] = [text]
@@ -73,7 +75,7 @@ class CookieRedirect:
         del self.files[item]
 
     def read(self, name):
-        return CookieRedirect.CookieReader(self.files[name])
+        return WebFileRedirect.FileReader(self.files[name])
 
     def exists(self, name):
         return name in self.files
@@ -97,8 +99,6 @@ class Webpage:
         # so we pause until this input is received from the webpage
         if self.page_content_as_html == "":
             self.page_content_as_html = "".join(self.page_content)
-        #raise batchfile.PauseProgram
-        #return None
         return self.user_input
 
 
@@ -106,30 +106,37 @@ def start_new_session():
     session_id = uuid.uuid4()
     webpage = Webpage(session_id)
     flask.session["uuid"] = session_id
+    flask.session["files"] = {}
     bat = batchfile.Batchfile(
-        stdin=webpage.request_input, stdout=webpage, redirection=CookieRedirect()
+        stdin=webpage.request_input, stdout=webpage, redirection=WebFileRedirect()
     )
     try:
         bat.run([f"cd {BAT_DIR}", f"call {BAT_FILE}"])
     except batchfile.PauseProgram:
         flask.session["variables"] = bat.VARIABLES
         flask.session["callstack"] = bat.CALLSTACK
+        flask.session["files"] = bat.redirection_target.files
         return bat
 
 
 def continue_session(next_input=""):
     webpage = Webpage(flask.session["uuid"], user_input=next_input)
-        
+
     bat = batchfile.Batchfile(
-        stdin=webpage.request_input, stdout=webpage, redirection=CookieRedirect()
+        stdin=webpage.request_input,
+        stdout=webpage,
+        redirection=WebFileRedirect(flask.session["files"]),
     )
     try:
-        bat.resume_from_serialized_state(flask.session["callstack"], flask.session["variables"])
+        bat.resume_from_serialized_state(
+            flask.session["callstack"], flask.session["variables"]
+        )
     except batchfile.PauseProgram:
         flask.session["variables"] = bat.VARIABLES
         flask.session["callstack"] = bat.CALLSTACK
+        flask.session["files"] = bat.redirection_target.files
         return bat
-    except (FileNotFoundError, IndexError):
+    except (FileNotFoundError, IndexError, batchfile.QuitProgram):
         del flask.session["uuid"]
 
 
@@ -137,7 +144,7 @@ def continue_session(next_input=""):
 def send_input():
     if "uuid" not in flask.session:
         return {"bat": None, "html": ""}
-    
+
     user_input = flask.request.get_json()
     if user_input == "":
         user_input = " "
@@ -148,7 +155,7 @@ def send_input():
     bat = continue_session(user_input)
     if bat is None:
         flask.abort(500)
-    
+
     response = flask.make_response(
         {
             "html": bat.stdout.page_content_as_html,
@@ -161,7 +168,7 @@ def send_input():
 
 @app.route("/")
 def index():
-    if "uuid" not in flask.session:
+    if ("uuid", "files") not in flask.session:
         # A brand new session
         bat = start_new_session()
     else:
