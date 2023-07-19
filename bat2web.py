@@ -15,6 +15,11 @@ except ImportError:
     pass
 
 
+class MyFlask(flask.Flask):
+    def add_url_rule(self, rule, *args, **kwargs):
+        return super().add_url_rule(os.environ.get("ROOT_DIR", "") + rule, *args, **kwargs)
+
+
 def create_app():
     app = flask.Flask(__name__)
 
