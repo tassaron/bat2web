@@ -17,11 +17,11 @@ except ImportError:
 
 class MyFlask(flask.Flask):
     def add_url_rule(self, rule, *args, **kwargs):
-        return super().add_url_rule(os.environ.get("ROOT_DIR", "") + rule, *args, **kwargs)
+        return super().add_url_rule(os.getenv("ROOT_DIR", "") + rule, *args, **kwargs)
 
 
 def create_app():
-    app = flask.Flask(__name__)
+    app = MyFlask(__name__)
 
     # Create random secret key at first launch
     # Load from key.sav every subsequent launch
