@@ -5,7 +5,6 @@ import batchfile
 import flask
 import os
 import uuid
-import logging
 
 try:
     from dotenv import load_dotenv
@@ -48,7 +47,6 @@ def create_app():
 
 app = create_app()
 
-LOG = logging.getLogger(__name__)
 BAT_DIR = os.getenv("BAT_DIR", "/srv/funtimes/game")
 BAT_FILE = "funtimes.bat"
 
@@ -91,11 +89,13 @@ class WebFileRedirect:
 
 
 class Webpage:
-    def __init__(self, uuid: uuid.UUID, user_input=""):
+    def __init__(self, uuid: uuid.UUID, content=None, user_input=""):
         self.uuid = uuid
-        self.page_content = []
+        self.page_content = content if content is not None else []
         self.page_content_as_html = ""
         self.user_input = [user_input]
+        if self.page_content:
+            self.page_content[-1] = "\n"
 
     def append(self, line):
         self.page_content.append(line)
@@ -121,6 +121,7 @@ def start_new_session():
     flask.session["uuid"] = session_id
     flask.session["callstack"] = []
     flask.session["variables"] = {}
+    flask.session["content"] = []
     bat = batchfile.Batchfile(
         stdin=webpage.request_input,
         stdout=webpage,
@@ -133,11 +134,16 @@ def start_new_session():
         flask.session["variables"] = bat.VARIABLES
         flask.session["callstack"] = bat.CALLSTACK
         flask.session["files"] = bat.redirection_target.files
+        flask.session["content"] = webpage.page_content
         return bat
 
 
 def continue_session(next_input=""):
-    webpage = Webpage(flask.session["uuid"], user_input=next_input)
+    webpage = Webpage(
+        flask.session["uuid"],
+        content=flask.session.get("content"),
+        user_input=next_input,
+    )
 
     app.logger.debug("Callstack: %s", flask.session["callstack"])
 
@@ -155,6 +161,7 @@ def continue_session(next_input=""):
         flask.session["variables"] = bat.VARIABLES
         flask.session["callstack"] = bat.CALLSTACK
         flask.session["files"] = bat.redirection_target.files
+        flask.session["content"] = webpage.page_content
         return bat
     except (FileNotFoundError, IndexError) as e:
         import traceback
@@ -171,7 +178,7 @@ def send_input():
         flask.abort(400)
 
     user_input = flask.request.get_json()
-    LOG.debug("Received user input: %s", user_input)
+    app.logger.debug("Received user input: %s", user_input)
     if user_input == "":
         user_input = " "
     elif user_input in ("A", "B", "C", "D", "Stats", "Stop"):
