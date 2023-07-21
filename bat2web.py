@@ -118,6 +118,7 @@ class Webpage:
 def start_new_session():
     session_id = uuid.uuid4()
     webpage = Webpage(session_id)
+    flask.session.permanent = True
     flask.session["uuid"] = session_id
     flask.session["callstack"] = []
     flask.session["variables"] = {}
