@@ -1,6 +1,7 @@
 """
 Turns a .bat file into a website for some reason
 """
+
 import batchfile
 import flask
 import os
@@ -53,7 +54,7 @@ BAT_FILE = "funtimes.bat"
 
 class WebFileRedirect:
     """
-    Target of redirected output that would've originally written a text file
+    Target of redirected output that would've originally written to a text file
     """
 
     class FileReader:
@@ -218,11 +219,10 @@ def index():
         flask.abort(400)
 
     flask_response = flask.make_response(
-        flask.render_template(
-            "webpage.html",
-            content=bat.stdout.page_content_as_html,
-            current_bat=bat.CALLSTACK[-1][0],
-        ),
+        {
+            "html": bat.stdout.page_content_as_html,
+            "bat": bat.CALLSTACK[-1][0],
+        },
         200,
     )
     return flask_response
@@ -231,8 +231,8 @@ def index():
 @app.route("/quit")
 def user_requested_quit():
     if "uuid" in flask.session:
-        uuid = flask.session.pop("uuid")
-    return flask.redirect(flask.url_for(".index"))
+        flask.session.pop("uuid")
+    return flask.make_response({}, 200)
 
 
 if __name__ == "__main__":
